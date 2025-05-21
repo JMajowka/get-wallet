@@ -1,83 +1,78 @@
 import requests
 from bs4 import BeautifulSoup
-import time
 
-# URL da página alvo
+# Configuração
 url = "https://privatekeys.pw/puzzles/bitcoin-puzzle-tx "
-
-# Cabeçalhos para simular uma requisição de navegador real
 headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.google.com/ ',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36'
 }
 
-# Configurações de tentativas
-tentativas = 3
-delay = 2
-
-# Variável para armazenar a resposta final
-response = None
-
-# Tentativa de conexão com retentativa
-for i in range(tentativas):
-    try:
-        print(f"[{i + 1}ª tentativa] Conectando ao site...")
-        response = requests.get(url, headers=headers, timeout=10)
-
-        if response.status_code == 200:
-            print("✅ Conexão bem-sucedida!\n")
-            break
-        else:
-            print(f"❌ Erro HTTP {response.status_code}: Falha ao acessar o site.")
-            if i < tentativas - 1:
-                print(f"Aguardando {delay} segundos antes da próxima tentativa...\n")
-                time.sleep(delay)
-            else:
-                print("❌ Número máximo de tentativas atingido. Encerrando.")
-                exit()
-
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Erro na requisição: {e}")
-        if i < tentativas - 1:
-            print(f"Aguardando {delay} segundos antes da próxima tentativa...\n")
-            time.sleep(delay)
-        else:
-            print("❌ Não foi possível conectar ao site após várias tentativas.")
-            exit()
-
-# Parseando o conteúdo HTML
-soup = BeautifulSoup(response.text, 'html.parser')
-
-# Buscando todos os blocos de endereços
-addresses = soup.find_all('div', class_='address')
-
-if not addresses:
-    print("❌ Nenhum bloco de endereço encontrado. O layout do site pode ter mudado.")
+# Fazendo requisição
+response = requests.get(url, headers=headers)
+if response.status_code != 200:
+    print("❌ Erro ao acessar o site:", response.status_code)
     exit()
 
-# Exibindo resultados
-print("🔍 Endereços encontrados:")
-print("-" * 80)
+# Parseando o HTML
+soup = BeautifulSoup(response.text, 'html.parser')
 
-for addr_block in addresses:
-    number_span = addr_block.find('span', class_='number')
-    address_span = addr_block.find('span', class_='addr')
-    balance_span = addr_block.find('span', class_='balance')
+# Extraindo texto completo da página
+content = soup.get_text()
 
-    # Verifica se todos os campos estão presentes
-    if not all([number_span, address_span, balance_span]):
-        continue
+# Informações-chave extraídas do conteúdo
+info = {
+    "Status": None,
+    "Prize Total": None,
+    "Remaining BTC": None,
+    "Creator": None,
+    "Start Date": None,
+    "Bitcoin Address": None,
+    "Last Solved": [],
+    "Recommended Targets": []
+}
 
-    puzzle_number = number_span.text.strip()
-    btc_address = address_span.text.strip()
-    balance_text = balance_span.text.strip().replace("BTC", "").strip()
+# Extrair dados linha por linha
+for line in content.split('\n'):
+    line = line.strip()
+    if line.startswith("Status:"):
+        info["Status"] = line.replace("Status:", "").strip()
+    elif line.startswith("Prize:"):
+        prize_info = line.replace("Prize:", "").strip()
+        info["Prize Total"] = prize_info.split(',')[0].strip()
+        for part in prize_info.split(','):
+            if 'remaining' in part:
+                info["Remaining BTC"] = part.replace('remaining', '').strip()
+    elif line.startswith("Creator:"):
+        info["Creator"] = line.replace("Creator:", "").strip()
+    elif line.startswith("Start Date:"):
+        info["Start Date"] = line.replace("Start Date:", "").strip()
+    elif line.startswith("Address:"):
+        info["Bitcoin Address"] = line.replace("Address:", "").strip().replace(" ", "")
+    elif "puzzle #" in line.lower() and "was solved" in line.lower():
+        info["Last Solved"].append(line)
+    elif "focus on solving puzzle" in line.lower() or "recommended targets" in line.lower():
+        parts = line.split('#')
+        for part in parts[1:]:
+            number = part.split()[0].strip()
+            if number.isdigit():
+                info["Recommended Targets"].append(f"# {number}")
 
-    # Tenta converter o saldo para float
-    try:
-        balance_btc = float(balance_text)
-    except ValueError:
-        continue
+# Mostrando as informações extraídas
+print("📊 Status do Puzzle Bitcoin:")
+print("-" * 60)
+print(f"📌 Status: {info['Status']}")
+print(f"💰 Prêmio Total: {info['Prize Total']}")
+print(f"🟡 BTC Restante: {info['Remaining BTC']}")
+print(f"👤 Criador: {info['Creator']}")
+print(f"📅 Data de início: {info['Start Date']}")
+print(f"🔐 Endereço mestre: {info['Bitcoin Address']}")
 
-    # Formata a saída
-    print(f"Puzzle #{puzzle_number:<2} | {btc_address} | Saldo: {balance_btc:.8f} BTC")
+if info["Last Solved"]:
+    print("\n✅ Últimos puzzles resolvidos:")
+    for line in info["Last Solved"]:
+        print(f"   - {line}")
+
+if info["Recommended Targets"]:
+    print("\n🎯 Próximos alvos recomendados:")
+    for target in info["Recommended Targets"]:
+        print(f"   - {target}")
