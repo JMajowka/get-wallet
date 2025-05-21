@@ -69,4 +69,4 @@ for addr_block in addresses:
     except ValueError:
         continue
 
-    print(f"Puzzle #{num_text} - {addr_text} - Saldo: {bal_value:.8
+    print(f"Puzzle #{num_text} - {addr_text} - Saldo: {bal_value:.8})
