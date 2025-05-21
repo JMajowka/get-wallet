@@ -70,6 +70,6 @@ if results:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(results)
-    print("\n✅ Resultados salvos em 'puzzles_com_saldo.txt'")
+    print("\n✅ Resultados salvos em 'puzzles_com_saldo.csv'")
 else:
     print("\n❌ Nenhum endereço com saldo positivo encontrado.")
