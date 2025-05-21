@@ -1,53 +1,75 @@
 import requests
 from bs4 import BeautifulSoup
+import csv
 
-def scrape_bitcoin_puzzle_addresses():
-    url = "https://privatekeys.pw/puzzles/bitcoin-puzzle-tx"
-    
+# URL da página que contém os endereços do puzzle
+url = "https://privatekeys.pw/puzzles/bitcoin-puzzle-tx "
+
+# Função para buscar saldo via API do Blockchair
+def get_balance(address):
+    api_url = f"https://api.blockchair.com/bitcoin/address/ {address}"
     try:
-        # Fazendo a requisição HTTP
-        response = requests.get(url)
-        response.raise_for_status()  # Verifica se houve erro na requisição
-        
-        # Parseando o HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Encontrando a tabela com os dados (ajuste o seletor conforme necessário)
-        table = soup.find('table')
-        if not table:
-            print("Nenhuma tabela encontrada no site.")
-            return []
-        
-        # Extraindo linhas da tabela
-        rows = table.find_all('tr')[1:]  # Pula o cabeçalho
-        
-        addresses_with_balance = []
-        
-        for row in rows:
-            cols = row.find_all('td')
-            if len(cols) >= 3:  # Verifica se há colunas suficientes
-                address = cols[0].get_text(strip=True)
-                balance = cols[2].get_text(strip=True)  # Ajuste o índice conforme a estrutura real
-                
-                # Verifica se há saldo (não zero)
-                if balance and balance != "0":
-                    addresses_with_balance.append((address, balance))
-        
-        return addresses_with_balance
-    
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao acessar o site: {e}")
-        return []
+        response = requests.get(api_url)
+        if response.status_code == 200:
+            data = response.json()
+            balance = int(data['data'][address]['balance']) / 100_000_000  # Converter satoshis para BTC
+            return round(balance, 8)
+        else:
+            return None
     except Exception as e:
-        print(f"Erro inesperado: {e}")
-        return []
+        print(f"Erro ao verificar {address}: {e}")
+        return None
 
-# Executando a função e exibindo os resultados
-addresses = scrape_bitcoin_puzzle_addresses()
+# Fazer scraping dos endereços
+response = requests.get(url)
+if response.status_code != 200:
+    print("Erro ao acessar o site.")
+    exit()
 
-if addresses:
-    print("Endereços com saldo em BTC:")
-    for idx, (address, balance) in enumerate(addresses, 1):
-        print(f"{idx}. Endereço: {address} - Saldo: {balance} BTC")
+soup = BeautifulSoup(response.text, 'html.parser')
+addresses = soup.find_all('div', class_='address')
+
+results = []
+
+print("Verificando saldos no blockchain...\n")
+for addr_block in addresses:
+    number = addr_block.find('span', class_='number')
+    address = addr_block.find('span', class_='addr')
+
+    if not all([number, address]):
+        continue
+
+    puzzle_num = number.text.strip()
+    btc_address = address.text.strip()
+
+    print(f"Puzzle #{puzzle_num} - Consultando {btc_address}...")
+
+    balance = get_balance(btc_address)
+
+    if balance is not None and balance > 0:
+        results.append({
+            'Puzzle': puzzle_num,
+            'Endereço': btc_address,
+            'Saldo (BTC)': balance
+        })
+        print(f" → Saldo: {balance:.8f} BTC\n")
+    elif balance == 0:
+        print(" → Saldo: 0 BTC\n")
+    else:
+        print(" → Não foi possível obter o saldo.\n")
+
+# Exibir resultados finais
+if results:
+    print("\n💰 Endereços com saldo positivo:")
+    for r in results:
+        print(f"Puzzle #{r['Puzzle']} - {r['Endereço']} - {r['Saldo (BTC)']:.8f} BTC")
+
+    # Salvar em CSV (opcional)
+    with open('enderecos_com_saldo.csv', 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['Puzzle', 'Endereço', 'Saldo (BTC)']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+    print("\n✅ Resultados salvos em 'puzzles_com_saldo.txt'")
 else:
-    print("Nenhum endereço com saldo encontrado ou erro ao acessar os dados.")
+    print("\n❌ Nenhum endereço com saldo positivo encontrado.")
