@@ -1,75 +1,43 @@
 import requests
 from bs4 import BeautifulSoup
-import csv
 
-# URL da página que contém os endereços do puzzle
+# URL do site
 url = "https://privatekeys.pw/puzzles/bitcoin-puzzle-tx "
 
-# Função para buscar saldo via API do Blockchair
-def get_balance(address):
-    api_url = f"https://api.blockchair.com/bitcoin/address/ {address}"
-    try:
-        response = requests.get(api_url)
-        if response.status_code == 200:
-            data = response.json()
-            balance = int(data['data'][address]['balance']) / 100_000_000  # Converter satoshis para BTC
-            return round(balance, 8)
-        else:
-            return None
-    except Exception as e:
-        print(f"Erro ao verificar {address}: {e}")
-        return None
+# Definir headers para simular navegador real
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36'
+}
 
-# Fazer scraping dos endereços
-response = requests.get(url)
+# Fazer a requisição com headers
+response = requests.get(url, headers=headers)
+
+# Verificar se a resposta foi bem-sucedida
 if response.status_code != 200:
-    print("Erro ao acessar o site.")
+    print(f"❌ Erro ao acessar o site. Código HTTP: {response.status_code}")
+    print("Possível causa: Site fora do ar, proteção anti-bot ou conexão bloqueada.")
     exit()
 
+# Continuar com o parse do HTML
 soup = BeautifulSoup(response.text, 'html.parser')
 addresses = soup.find_all('div', class_='address')
 
-results = []
-
-print("Verificando saldos no blockchain...\n")
+print("Endereços encontrados:")
 for addr_block in addresses:
     number = addr_block.find('span', class_='number')
     address = addr_block.find('span', class_='addr')
+    balance = addr_block.find('span', class_='balance')
 
-    if not all([number, address]):
+    if not all([number, address, balance]):
         continue
 
-    puzzle_num = number.text.strip()
-    btc_address = address.text.strip()
+    num_text = number.text.strip()
+    addr_text = address.text.strip()
+    bal_text = balance.text.strip().replace("BTC", "").strip()
 
-    print(f"Puzzle #{puzzle_num} - Consultando {btc_address}...")
+    try:
+        bal_value = float(bal_text)
+    except ValueError:
+        continue
 
-    balance = get_balance(btc_address)
-
-    if balance is not None and balance > 0:
-        results.append({
-            'Puzzle': puzzle_num,
-            'Endereço': btc_address,
-            'Saldo (BTC)': balance
-        })
-        print(f" → Saldo: {balance:.8f} BTC\n")
-    elif balance == 0:
-        print(" → Saldo: 0 BTC\n")
-    else:
-        print(" → Não foi possível obter o saldo.\n")
-
-# Exibir resultados finais
-if results:
-    print("\n💰 Endereços com saldo positivo:")
-    for r in results:
-        print(f"Puzzle #{r['Puzzle']} - {r['Endereço']} - {r['Saldo (BTC)']:.8f} BTC")
-
-    # Salvar em CSV (opcional)
-    with open('enderecos_com_saldo.csv', 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['Puzzle', 'Endereço', 'Saldo (BTC)']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(results)
-    print("\n✅ Resultados salvos em 'puzzles_com_saldo.csv'")
-else:
-    print("\n❌ Nenhum endereço com saldo positivo encontrado.")
+    print(f"Puzzle #{num_text} - {addr_text} - Saldo: {bal_value:.8f} BTC")
